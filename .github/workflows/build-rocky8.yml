@@ -1,0 +1,49 @@
+name: build-lapce-rocky8-glibc228
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: rockylinux:8
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: install system deps
+        run: |
+          dnf install -y epel-release
+          dnf install -y \
+            gcc \
+            gcc-c++ \
+            make \
+            pkg-config \
+            libX11-devel \
+            libXcursor-devel \
+            libXi-devel \
+            libXrandr-devel \
+            libxkbcommon-devel \
+            wayland-devel \
+            mesa-libEGL-devel \
+            openssl-devel \
+            fontconfig-devel \
+            curl \
+            git
+
+      - name: install rust
+        run: |
+          curl https://sh.rustup.rs -sSf | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: build lapce (release)
+        run: |
+          cargo build --release
+
+      - name: upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lapce-rocky8-glibc228
+          path: target/release/lapce
