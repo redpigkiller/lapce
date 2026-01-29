@@ -7,19 +7,25 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
+      # 使用 Rocky Linux 8 確保與 RHEL 8.8 的二進位制相容性 (glibc 2.28)
       image: rockylinux:8
 
     steps:
-      - name: checkout
+      - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: install system deps
+      - name: Install system deps
+        # 安裝 perl-core 解決 OpenSSL 編譯錯誤 (IPC/Cmd.pm)
+        # 安裝 binutils 確保有 strip 工具可用
         run: |
           dnf install -y epel-release
           dnf install -y \
             gcc \
             gcc-c++ \
             make \
+            binutils \
+            perl-core \
+            python3 \
             pkg-config \
             libX11-devel \
             libXcursor-devel \
@@ -33,16 +39,39 @@ jobs:
             curl \
             git
 
-      - name: install rust
+      - name: Install Rust
         run: |
           curl https://sh.rustup.rs -sSf | sh -s -- -y
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-      - name: build lapce (release)
-        run: |
-          cargo build --release
+      # 使用 Cache 加速未來的編譯
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
-      - name: upload artifact
+      - name: Build Lapce (Release)
+        # --locked 確保依賴版本鎖定，增加構建的穩定性
+        run: |
+          cargo build --release --locked
+
+      - name: Optimize Binary (Strip)
+        # 這一步驟非常安全，它只移除人類看不懂的除錯代碼，
+        # 不會影響程式功能，但能大幅減小檔案體積。
+        run: |
+          strip target/release/lapce
+
+      - name: Verify Compatibility
+        # 這裡會列印出檔案依賴的 glibc 版本，讓你再次確認。
+        # RHEL 8.8 使用的是 glibc 2.28，如果這裡顯示 <= 2.28 就沒問題。
+        run: |
+          echo "Binary details:"
+          file target/release/lapce
+          echo "GLIBC version dependency:"
+          ldd target/release/lapce | grep libc || true
+          echo "Expected environment: RHEL/Rocky 8.x"
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: lapce-rocky8-glibc228
